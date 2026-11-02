@@ -1,4 +1,4 @@
-﻿# 小米电视 CleanYourTV 定制版
+﻿# FreeScreen TV
 
 基于 [Gathin23/CleanYourTV](https://github.com/Gathin23/cleanyourtv) 2.5.0 的个人电视桌面定制版本，保留原有首页布局，面向遥控器操作和小米电视使用场景进行调整。
 
@@ -40,4 +40,5 @@ Release 构建配置使用本机 Android 调试签名。不同电脑的签名可
 ## 许可和致谢
 
 本项目基于 Gathin 的 CleanYourTV；项目代码沿用仓库中的 MIT 许可证，详见 [LICENSE](LICENSE)。字体及其他第三方素材遵循各自许可，详见对应资源文件。图片和应用品牌标识的权利归各自权利人所有。
+
 
