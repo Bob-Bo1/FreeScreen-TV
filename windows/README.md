@@ -2,13 +2,13 @@
 
 完整解压 Release 中的便携 ZIP，然后双击「电视助手.exe」。
 
-- 连接电视前，从 [Android Developers](https://developer.android.com/tools/releases/platform-tools) 下载 Windows 版 Platform-Tools，将解压后的内容放入便携包的 `files` 文件夹，让 `adb.exe` 与 `setup.ps1` 同级。电视开启 ADB 调试，电脑和电视连接同一局域网。
-- 要安装播放器，从 [TiviMate 官网](https://tivimate.com/) 获取 APK，命名为 `tivimate.apk` 放入 `files`，然后点「安装 TVM 播放器」或「更换主页并安装播放器」。
+- 电视开启 ADB 调试，电脑和电视连接同一局域网。填入电视 IP，然后点「更换主页并安装播放器」。电视如果出现 ADB 授权提示，请点允许，再重试。
+- 首次安装需要联网。助手会从 scrcpy 的 GitHub 发布包获取 ADB，从 TiviMate 官网获取播放器。只装播放器可点「安装 TVM 播放器」。下载失败时，可查看「操作记录」后重试。
 - 点「导入播放列表」选择自己的 M3U 或 M3U8 文件。节目表可单独导入。导入后点「启动直播源」，再将订阅地址填到电视。电视首次导入和刷新时保持助手运行。
 - 恢复主页时，使用助手里的「恢复原主页」。恢复记录放在便携文件夹旁边。
 - 从浏览器下载后，Windows 可能显示 SmartScreen 提示。遇到提示时，先确认文件来自本仓库 Release。
 
-公开版随包提供主页和 Home 替身，直播源、节目表、播放器和 ADB 由用户自行准备。使用「查看更多候选源」前，可在 `files/sources.json` 中配置有权使用的候选清单，每项包含 `name`、`url` 和 `enabled`。
+公开版随包提供主页和 Home 替身，直播源和节目表可自行导入。使用「查看更多候选源」前，可在 `files/sources.json` 中配置有权使用的候选清单，每项包含 `name`、`url` 和 `enabled`。
 
 ## 编译 Windows 客户端
 

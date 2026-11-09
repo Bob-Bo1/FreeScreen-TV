@@ -62,17 +62,110 @@ function Read-TiviMateField {
     if ($null -eq $field) { throw '请先选中 TiviMate 的网址输入框。也可以复制地址后手动输入。' }
     return $field.GetAttribute('text')
 }
+function Get-OfficialDownload([uri]$uri, [string]$destination, [long]$maximumBytes) {
+    Add-Type -AssemblyName System.Net.Http
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $handler = New-Object System.Net.Http.HttpClientHandler
+    $handler.AllowAutoRedirect = $false
+    $client = New-Object System.Net.Http.HttpClient -ArgumentList $handler
+    $client.DefaultRequestHeaders.UserAgent.ParseAdd('FreeScreen-TV-Assistant/1.0')
+    $client.DefaultRequestHeaders.Accept.ParseAdd('application/octet-stream')
+    $client.Timeout = [TimeSpan]::FromSeconds(90)
+    $client.MaxResponseContentBufferSize = $maximumBytes
+    try {
+        for ($hop = 0; $hop -lt 5; $hop++) {
+            if ($uri.Scheme -ne 'https') { throw '官方地址重定向到了非 HTTPS 链接。' }
+            $response = $client.GetAsync($uri).GetAwaiter().GetResult()
+            try {
+                if ([int]$response.StatusCode -in @(301,302,303,307,308) -and $response.Headers.Location) {
+                    $uri = [uri]::new($uri, $response.Headers.Location)
+                    continue
+                }
+                $null = $response.EnsureSuccessStatusCode()
+                $bytes = $response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+                [IO.File]::WriteAllBytes($destination, $bytes)
+                return
+            } finally { $response.Dispose() }
+        }
+        throw '官方地址重定向次数过多。'
+    } finally { $client.Dispose() }
+}
+
+function Install-PlatformTools {
+    $tools = @('AdbWinApi.dll','AdbWinUsbApi.dll','adb.exe')
+    $missing = @($tools | Where-Object { !(Test-Path -LiteralPath (Join-Path $PSScriptRoot $_) -PathType Leaf) })
+    if (!$missing.Count) { return }
+    $architecture = $env:PROCESSOR_ARCHITEW6432
+    if (!$architecture) { $architecture = $env:PROCESSOR_ARCHITECTURE }
+    if (!$architecture) {
+        $architecture = (Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' -Name PROCESSOR_ARCHITECTURE).PROCESSOR_ARCHITECTURE
+    }
+    switch ($architecture) {
+        'AMD64' { $folder = 'scrcpy-win64-v5.0.1'; $asset = '620992965'; $sha = 'b12a2c4ee8be317422451fc7dcf8ee20a71b5ea7ef9ad73ddd825a25316227a5' }
+        'ARM64' { $folder = 'scrcpy-winarm64-v5.0.1'; $asset = '620993016'; $sha = '16c3fc2068df64946f670e3504b4752073ebae47a416a45b46e79a5ab19c689b' }
+        'x86' { $folder = 'scrcpy-win32-v5.0.1'; $asset = '620992917'; $sha = '0cb65ebf1bce892fa4d1502d699af0c7a1a7f24d7febcb9ef72894e3f23fc2ad' }
+        default { throw "暂不支持在 $architecture 架构下载 ADB。" }
+    }
+    $tools = @('AdbWinApi.dll','AdbWinUsbApi.dll','libusb-1.0.dll','adb.exe')
+    Write-Host '正在从 scrcpy 官方 GitHub 下载电视连接组件…'
+    $staging = Join-Path $PSScriptRoot ('.adb-' + [Guid]::NewGuid().ToString('N'))
+    $null = New-Item -ItemType Directory -Path $staging
+    $archivePath = Join-Path $staging 'platform-tools.zip'
+    try {
+        Get-OfficialDownload "https://api.github.com/repos/Genymobile/scrcpy/releases/assets/$asset" $archivePath 40MB
+        if ((Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash -ne $sha) {
+            throw '电视连接组件校验失败。'
+        }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
+        try {
+            foreach ($name in $tools) {
+                $entry = $archive.GetEntry("$folder/$name")
+                if ($null -eq $entry -or $entry.Length -le 0 -or $entry.Length -gt 30MB) {
+                    throw "scrcpy 官方压缩包缺少有效的 $name。"
+                }
+                [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $staging $name))
+            }
+        } finally { $archive.Dispose() }
+        foreach ($name in $tools) {
+            Move-Item -LiteralPath (Join-Path $staging $name) -Destination (Join-Path $PSScriptRoot $name) -Force
+        }
+    } catch { throw "下载电视连接组件失败，请检查是否能访问 GitHub 官方下载地址后重试。$($_.Exception.Message)" }
+    finally {
+        foreach ($name in $tools + @('platform-tools.zip')) {
+            $path = Join-Path $staging $name
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+        }
+        Remove-Item -LiteralPath $staging
+    }
+}
+
+function Install-TiviMateDownload([string]$apk) {
+    if (Test-Path -LiteralPath $apk -PathType Leaf) { return }
+    Write-Host '正在从 TiviMate 官网下载播放器…'
+    $partial = $apk + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    try {
+        Get-OfficialDownload 'https://tivimate.com/apk' $partial 80MB
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $archive = [IO.Compression.ZipFile]::OpenRead($partial)
+        try {
+            if (!$archive.GetEntry('AndroidManifest.xml') -or !$archive.GetEntry('classes.dex')) {
+                throw '官网下载的文件缺少 APK 必需内容。'
+            }
+        } finally { $archive.Dispose() }
+        Move-Item -LiteralPath $partial -Destination $apk
+    } catch { throw "TiviMate 下载失败，请检查是否能访问 tivimate.com 后重试。$($_.Exception.Message)" }
+    finally { if (Test-Path -LiteralPath $partial) { Remove-Item -LiteralPath $partial -Force } }
+}
+
 try {
     $TiviMateApk = Join-Path $PSScriptRoot 'tivimate.apk'
-    if ($Mode -in @('install','tivimate') -and -not (Test-Path -LiteralPath $TiviMateApk -PathType Leaf)) {
-        throw '请把从 TiviMate 官网下载的安装包命名为 tivimate.apk，放到 files 文件夹。'
-    }
-    if (!(Test-Path -LiteralPath $adb -PathType Leaf)) { throw '请把 Android SDK Platform-Tools 的 Windows 版解压到 files 文件夹，确保 adb.exe 与 setup.ps1 在同一级。' }
     Write-Host '请先确认电视和电脑处于同一局域网，电视已开启 USB / ADB 调试。'
     $ip = (Read-Host '请输入电视 IP 地址，例如 192.168.1.100').Trim()
     $parsed = $null
     if (-not [System.Net.IPAddress]::TryParse($ip, [ref]$parsed) -or $parsed.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) { throw 'IP 地址格式不正确。' }
     $address = "$ip`:5555"
+    Install-PlatformTools
     $connect = Invoke-Adb @('connect', $address)
     Write-Host $connect.Text
     $state = AdbRaw @('get-state')
@@ -93,6 +186,7 @@ if ($state -ne 'device') {
     $fingerprint = Shell @('getprop','ro.build.fingerprint')
     Write-Host "已连接电视型号：$model"
     Write-Host '其他型号可以测试；Home 替身的效果取决于具体电视系统。'
+    if ($Mode -in @('install','tivimate')) { Install-TiviMateDownload $TiviMateApk }
     if ($Mode -eq 'tivimate') {
         Write-Host '只安装 TiviMate 播放器：不修改桌面、不变更 Home、不写恢复记录。'
         $r = Adb @('install','-r',$TiviMateApk); Write-Host $r
