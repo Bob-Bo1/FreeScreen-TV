@@ -289,6 +289,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        android.content.SharedPreferences tvSettingsPref=getSharedPreferences("tv_settings_shortcut",MODE_PRIVATE);
+        if(!tvSettingsPref.getBoolean("added",false)){
+            if(getPackageManager().resolveActivity(new Intent().setClassName("com.xiaomi.mitv.settings","com.xiaomi.mitv.settings.entry.MainActivity"),0)!=null && LibraryApps.save(this,"com.xiaomi.mitv.settings",true)) tvSettingsPref.edit().putBoolean("added",true).apply();
+        }
         density = getResources().getDisplayMetrics().density;
         // config.xml, overlaid by config.json from a pushed theme (see Config and tools/theme.sh).
         Config cfg = Config.load(this);
@@ -319,8 +323,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         glass = findViewById(R.id.glass);
         if (festive) glass.setAccent(festival.accentColor());
         ambient = findViewById(R.id.ambient);
-        experience = new HomeExperience(this, root, ambient, sky,
-                () -> openPopup == null && appLibrary == null && !reordering && cardPrompt == null);
+        experience = new HomeExperience(this, root, ambient, sky);
         // The glow is one bitmap, so its alpha can be applied while drawing it. Otherwise every frame of
         // a fade renders it into a full-screen offscreen buffer first.
         ambient.forceHasOverlappingRendering(false);
@@ -506,11 +509,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnReorder = findViewById(R.id.btnReorder);
         btnReorder.setOnClickListener(v -> toggleReorder());
         btnReorder.setVisibility(cfg.reorderButton ? View.VISIBLE : View.GONE);
-        btnSettings.setOnLongClickListener(v -> {
-            showSettingsMenu();
-            return true;
-        });
-
         // Keep focus on the top bar at its ends and at the top: Android's focus finder would otherwise
         // jump to a tile far below when there is nothing in that direction.
         boolean rtlMenuBar = getResources().getBoolean(R.bool.rtl_menu_bar);
@@ -582,7 +580,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (experience != null) { experience.hideScreen(); experience.reset(); }
+
         if (openLauncherSettingsIfAsked(intent)) return;
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
         grid.scrollToPosition(0);
@@ -619,6 +617,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             reloadApps(true);
         }
         rebuildOnResume = false;
+        root.post(this::showFirstDockChoice);
         updateGreeting();
         updateRace();
         updateWifiLabel();
@@ -700,6 +699,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         adapter.reload(cards.isEmpty() ? none : CardFeature.run(() -> Cards.shown(cards), none));
         lastFocusedKey = returnKey;
         lastFocused = returnSlot;
+        root.post(this::showFirstDockChoice);
     }
 
     /**
@@ -722,7 +722,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onPause() {
         super.onPause();
-        if (experience != null) experience.stop();
+
         endReorder();   // Home or another app while reordering keeps the order so far
         wallpaperPlayer.stop();
         stopAmbientAnimation();
@@ -803,7 +803,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (experience != null && experience.key(event)) return true;
         if (handleSettingsKey(event)) return true;
         if (!reordering) return super.dispatchKeyEvent(event);
         if (dockEditing) return dispatchDockEdit(event);
@@ -1069,7 +1068,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (appLibrary != null) appLibrary.close();
         if (openPopup != null) openPopup.dismiss();
         libraryFocusPending = false;
-        appLibrary = new AppLibraryDialog(this, animations, reducedMotion, adapter::containsPackage, () -> reloadApps(false), () -> {
+        appLibrary = new AppLibraryDialog(this, adapter::containsPackage, () -> reloadApps(false), () -> {
             appLibrary = null;
             openPopup = null;
             libraryFocusPending = true;
@@ -1669,11 +1668,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // Horizontal: swallow the key at a row's ends so focus never wraps to the next row or
         // escapes up into the top bar. Mid-row moves fall through to the default focus search.
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            boolean forward = rtlAppGrid ? keyCode == KeyEvent.KEYCODE_DPAD_LEFT : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
-            if (forward && position == adapter.focusablePosition(count - 1) && adapter.isLibraryAt(count)) {
-                focusLibrary();
-                return true;
-            }
             // In the dock, the last app is the row's end: the empty slots after it take no focus.
             int rowCount = position < COLUMNS ? Math.min(count, adapter.dockFilled()) : count;
             return GridNavigation.atHorizontalEdge(position, rowCount, COLUMNS,
@@ -1685,7 +1679,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         } else {
             int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
             if (position >= lastRowStart) {
-                if (adapter.isLibraryAt(count)) focusLibrary();
+                focusLibrary();
                 return true;
             }
             target = Math.min(position + COLUMNS, count - 1);
@@ -1759,8 +1753,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         libraryFocusPending = false;
         cancelPendingFocusScroll();
         if (adapter.appCount() == 0) {
-            if (adapter.isLibraryAt(0)) focusLibrary();
-            else btnWifi.requestFocus();
+            focusLibrary();
             return;
         }
         final int pos = adapter.focusablePosition(Math.max(0, Math.min(position, adapter.appCount() - 1)));
@@ -2031,10 +2024,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private Intent systemIntent(String standardAction) {
         Intent i = new Intent(standardAction);
         if (i.resolveActivity(getPackageManager()) != null) return i;
-        i = new Intent().setComponent(new ComponentName(
-                "com.xiaomi.mitv.settings", "com.xiaomi.mitv.settings.entry.MainActivity"));
+        i = xiaomiTvSettings();
         if (i.resolveActivity(getPackageManager()) != null) return i;
         return new Intent(standardAction);   // nothing found: let open() show the can't-open toast
+    }
+
+    private Intent xiaomiTvSettings() {
+        return new Intent().setClassName("com.xiaomi.mitv.settings",
+                "com.xiaomi.mitv.settings.entry.MainActivity");
     }
 
     /** Hides the Inputs pill when it would have nothing to list: streaming boxes have no HDMI-in, AV or tuner. */
@@ -2095,16 +2092,27 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         Uri uri = TvContract.buildChannelUriForPassthroughInput(inputId);
         Intent view = new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "vnd.android.cursor.item/channel")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try {
-            startActivity(view);
-            return;
-        } catch (ActivityNotFoundException e) {
-            if (inputAction.isEmpty()) {
-                Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show();
+        // Prefer a system Live TV handler when one exists; Xiaomi MiTV has none for this URI.
+        if (getPackageManager().resolveActivity(view, 0) != null) {
+            try {
+                startActivity(view);
                 return;
+            } catch (ActivityNotFoundException ignored) {
             }
         }
-        open(new Intent(inputAction).setDataAndType(uri, "vnd.android.cursor.item/channel"));
+        // Built-in TvView player: works where ACTION_VIEW is unanswered (MiTV / PatchWall).
+        try {
+            startActivity(new Intent(this, PassthroughActivity.class)
+                    .putExtra(PassthroughActivity.EXTRA_INPUT_ID, inputId)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return;
+        } catch (Exception ignored) {
+        }
+        if (!inputAction.isEmpty()) {
+            open(new Intent(inputAction).setDataAndType(uri, "vnd.android.cursor.item/channel"));
+            return;
+        }
+        Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show();
     }
 
     /** Dropdown menu under the Inputs pill: HDMI ports (with connection state), AV and Live TV. */
@@ -2440,57 +2448,85 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private void showControlCenter() {
         if (openPopup != null) openPopup.dismiss();
-        View panel = controlPanel("控制中心");
+        View panel = controlPanel("设置");
         LinearLayout rows = panel.findViewById(R.id.manage_rows);
-        PopupWindow popup = glassPopup(panel, Math.round(360 * density));
-        addManageAction(rows, popup, "输入源", this::showInputs);
-        addManageAction(rows, popup, "无线网络", this::openNetworkPill);
-        addManageAction(rows, popup, "全部应用", this::onLibraryRequested);
-        addManageAction(rows, popup, "壁纸、屏保和视觉效果", this::showPersonalization);
-        View audio = getLayoutInflater().inflate(R.layout.item_input, rows, false);
-        audio.findViewById(R.id.icon).setVisibility(View.GONE);
-        audio.findViewById(R.id.dot).setVisibility(View.GONE);
-        audio.findViewById(R.id.status).setVisibility(View.GONE);
-        ((TextView) audio.findViewById(R.id.title)).setText("音量     ◀  减少    增加  ▶");
-        android.media.AudioManager manager = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
-        audio.setOnKeyListener((v,key,event) -> {
-            if(key!=KeyEvent.KEYCODE_DPAD_LEFT && key!=KeyEvent.KEYCODE_DPAD_RIGHT) return false;
-            if(event.getAction()==KeyEvent.ACTION_DOWN && manager!=null)
-                manager.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
-                    key==KeyEvent.KEYCODE_DPAD_LEFT?android.media.AudioManager.ADJUST_LOWER:android.media.AudioManager.ADJUST_RAISE,
-                    android.media.AudioManager.FLAG_SHOW_UI);
-            return true;
+        PopupWindow popup = glassPopup(panel, Math.round(320 * density));
+        addManageAction(rows, popup, "壁纸设置", this::showExperienceWallpapers);
+        addManageAction(rows, popup, "电视设置", () -> {
+            Intent settings = xiaomiTvSettings();
+            open(settings.resolveActivity(getPackageManager()) != null
+                    ? settings : systemIntent(Settings.ACTION_SETTINGS));
         });
-        rows.addView(audio);
-        addManageAction(rows, popup, "电视图像与亮度设置", () -> open(systemIntent(Settings.ACTION_DISPLAY_SETTINGS)));
-        addManageAction(rows, popup, "电视系统设置", () -> open(systemIntent(Settings.ACTION_SETTINGS)));
+        addManageAction(rows, popup, "回到原主页", this::openOriginalHomeSettings);
         popup.showAtLocation(root, Gravity.TOP | Gravity.RIGHT, Math.round(44*density), Math.round(60*density));
         rows.getChildAt(0).requestFocus();
     }
 
-    private void showPersonalization() {
-        View panel=controlPanel("个性化");
-        LinearLayout rows=panel.findViewById(R.id.manage_rows);
-        PopupWindow popup=glassPopup(panel, Math.round(380*density));
-        addManageAction(rows,popup,"选择壁纸",this::showExperienceWallpapers);
-        addManageAction(rows,popup,"屏保：" + ("photo".equals(experience.screenMode())?"照片轮播":"低亮时钟"),this::showScreenModes);
-        addManageAction(rows,popup,"预览屏保",() -> root.post(() -> experience.preview()));
-        addManageAction(rows,popup,animations?"视觉效果：流畅":"视觉效果：简洁",() -> {
-            getSharedPreferences(Config.SETTINGS_NAME,MODE_PRIVATE).edit()
-                    .putBoolean("animations", !animations).putBoolean("advanced_effects",false).apply();
-            recreate();
-        });
-        popup.showAtLocation(root,Gravity.CENTER,0,0); rows.getChildAt(0).requestFocus();
+    private void openOriginalHomeSettings() {
+        Intent homeSettings = new Intent(Settings.ACTION_HOME_SETTINGS);
+        Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+        boolean hasOtherHome = getPackageManager().queryIntentActivities(home, 0).stream()
+                .anyMatch(info -> info.activityInfo != null
+                        && !getPackageName().equals(info.activityInfo.packageName)
+                        && !"com.ts.launcher".equals(info.activityInfo.packageName));
+        if (hasOtherHome && homeSettings.resolveActivity(getPackageManager()) != null) {
+            startActivity(homeSettings);
+            return;
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("回到原主页")
+                .setMessage("原主页目前无法从电视选择。请在电脑电视助手里点击「恢复原主页」。")
+                .setPositiveButton("知道了", null)
+                .show();
     }
 
-    private void showScreenModes() {
-        View panel=controlPanel("屏保 · 10分钟后启动");
-        LinearLayout rows=panel.findViewById(R.id.manage_rows);
-        PopupWindow popup=glassPopup(panel, Math.round(380*density));
-        addManageAction(rows,popup,"低亮时钟",() -> experience.selectScreen("clock"));
-        addManageAction(rows,popup,"照片轮播",() -> experience.selectScreen("photo"));
-        addManageAction(rows,popup,"预览当前屏保",() -> root.post(() -> experience.preview()));
-        popup.showAtLocation(root,Gravity.CENTER,0,0); rows.getChildAt(0).requestFocus();
+    private boolean firstDockDialogOpen;
+
+    private void showFirstDockChoice() { showFirstDockChoice(false); }
+    private void showFirstDockChoice(boolean manual) {
+        android.content.SharedPreferences prefs=getSharedPreferences("first_dock_setup",MODE_PRIVATE);
+        if(isFinishing() || isDestroyed() || firstDockDialogOpen || (!manual && prefs.getBoolean("done",false))) return;
+        // Existing order, shortcut choices or personalization identify an existing user.
+        boolean existing=Order.file(this).exists()
+                || new java.io.File(getFilesDir(),"library_apps.txt").exists()
+                || new java.io.File(getFilesDir(),"library_home_removed.txt").exists()
+                || !getSharedPreferences("home_experience",MODE_PRIVATE).getAll().isEmpty();
+        try {
+            android.content.pm.PackageInfo info=getPackageManager().getPackageInfo(getPackageName(),0);
+            existing |= info.lastUpdateTime-info.firstInstallTime>3000;
+        } catch(android.content.pm.PackageManager.NameNotFoundException ignored) { }
+        if(existing && !manual){prefs.edit().putBoolean("done",true).apply();return;}
+        if(adapter==null || adapter.movableKeys().isEmpty() || openPopup!=null) return;
+        java.util.List<AppAdapter.Entry> candidates=new java.util.ArrayList<>();
+        for(int pos=0;pos<adapter.movableCount();pos++){
+            AppAdapter.Entry app=adapter.entryAt(pos);
+            if(app!=null && (app.kind==AppAdapter.Entry.APP || app.kind==AppAdapter.Entry.CARD)) candidates.add(app);
+        }
+        if(candidates.isEmpty())return;
+        candidates.sort((a,b)->a.label.compareToIgnoreCase(b.label));
+        int limit=Math.min(4,Math.min(COLUMNS,candidates.size()));
+        firstDockDialogOpen=true;
+        DockPicker.show(this,candidates,limit,selected->{
+            java.util.List<String> keys=new java.util.ArrayList<>(selected);
+            for(String key:adapter.movableKeys())if(!keys.contains(key))keys.add(key);
+            Order order=new Order(Order.dockKey(dockApps),keys);
+            if(!Order.save(Order.file(this),order)){Toast.makeText(this,"保存失败，请重试",Toast.LENGTH_LONG).show();return false;}
+            adapter.setSavedOrder(Order.ranks(order,dockApps));
+            prefs.edit().putBoolean("done",true).apply();reloadTiles();lastFocused=0;restoreFocus();return true;
+        },()->prefs.edit().putBoolean("done",true).apply(),()->{firstDockDialogOpen=false;});
+    }
+
+    private void showPhoneWallpapers() {
+        java.io.File dir=new java.io.File(getFilesDir(),"phone-wallpapers");
+        java.io.File[] files=dir.listFiles((d,n)->n.endsWith(".img"));
+        if(files==null||files.length==0){android.widget.Toast.makeText(this,"尚未上传壁纸，请先进入手机传文件",android.widget.Toast.LENGTH_LONG).show();return;}
+        java.util.Arrays.sort(files,(a,b)->Long.compare(b.lastModified(),a.lastModified()));
+        String[] labels=new String[files.length];for(int i=0;i<files.length;i++)labels[i]="上传壁纸 "+new java.text.SimpleDateFormat("MM-dd HH:mm",java.util.Locale.CHINA).format(new java.util.Date(files[i].lastModified()));
+        new android.app.AlertDialog.Builder(this).setTitle("选择上传的壁纸").setItems(labels,(dialog,index)->{
+            ImageView image=new ImageView(this);image.setAdjustViewBounds(true);image.setMaxHeight(Math.round(220*density));
+            android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inSampleSize=4;image.setImageBitmap(android.graphics.BitmapFactory.decodeFile(files[index].getPath(),options));
+            new android.app.AlertDialog.Builder(this).setTitle(labels[index]).setView(image).setPositiveButton("使用",(d,w)->experience.selectWallpaper(files[index].getName())).setNeutralButton("删除",(d,w)->{if(files[index].getName().equals(experience.wallpaper()))experience.selectWallpaper("brand");files[index].delete();}).setNegativeButton("返回",null).show();
+        }).setNegativeButton("返回",null).show();
     }
 
     private void showExperienceWallpapers() {
@@ -2498,6 +2534,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         LinearLayout rows=panel.findViewById(R.id.manage_rows);
         PopupWindow popup=glassPopup(panel, Math.round(400*density));
         addManageAction(rows,popup,"品牌柔光 · 黑色背景",() -> experience.selectWallpaper("brand"));
+        addManageAction(rows,popup,"手机上传壁纸",() -> startActivity(
+                new Intent(this, PhoneTransferActivity.class).putExtra(PhoneTransferActivity.WALLPAPER_ONLY, true)));
+        addManageAction(rows,popup,"已上传的壁纸",this::showPhoneWallpapers);
         for(int i=0;i<HomeExperience.FILES.length;i++) {
             final String file=HomeExperience.FILES[i];
             addManageAction(rows,popup,HomeExperience.NAMES[i],() -> experience.selectWallpaper(file));
@@ -2516,55 +2555,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     // ---- launcher settings and module cards -------------------------------------------------------
-
-    /** Keep a normal Settings click for the TV; the launcher's choices live behind hold OK. */
-    private void showSettingsMenu() {
-        View anchor = findViewById(R.id.btnSettings);
-        View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
-        LinearLayout rows = panel.findViewById(R.id.rows);
-        PopupWindow popup = glassPopup(panel, (int) (200 * density));
-        addSettingsMenuRow(rows, popup, R.string.launcher_settings, () -> startActivityForResult(
-                new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
-        addSettingsMenuRow(rows, popup, R.string.manage_all_apps, this::onLibraryRequested);
-        if (moduleCards) addSettingsMenuRow(rows, popup, R.string.module_cards, this::showModuleCards);
-        if (dockRow) addSettingsMenuRow(rows, popup, R.string.dock_edit, this::startDockEdit);
-        addSettingsMenuRow(rows, popup, R.string.reorder, this::toggleReorder);
-        panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
-        popup.setWidth(Math.max((int) (200 * density), panel.getMeasuredWidth()));
-        // Hebrew puts Settings at the left of the header: grow the menu inward from it.
-        dropIn(popup, panel, anchor, getResources().getBoolean(R.bool.rtl_menu_bar)
-                ? Gravity.START : Gravity.END);
-        rows.getChildAt(0).requestFocus();
-    }
-
-    private void addSettingsMenuRow(LinearLayout rows, PopupWindow popup, int title, Runnable action) {
-        View row = getLayoutInflater().inflate(R.layout.item_input, rows, false);
-        row.findViewById(R.id.icon).setVisibility(View.GONE);
-        row.findViewById(R.id.dot).setVisibility(View.GONE);
-        row.findViewById(R.id.status).setVisibility(View.GONE);
-        ((TextView) row.findViewById(R.id.title)).setText(title);
-        row.setOnClickListener(v -> {
-            popup.dismiss();
-            action.run();
-        });
-        // The OK-up after opening the menu must not activate its first row.
-        final boolean[] pressed = {false};
-        row.setOnKeyListener((v, code, event) -> {
-            if (code != KeyEvent.KEYCODE_DPAD_CENTER && code != KeyEvent.KEYCODE_ENTER) return false;
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                if (event.getRepeatCount() == 0) pressed[0] = true;
-                return true;
-            }
-            boolean activate = pressed[0];
-            pressed[0] = false;
-            if (activate) {
-                popup.dismiss();
-                action.run();
-            }
-            return true;
-        });
-        rows.addView(row);
-    }
 
     /**
      * Asks about the next card that has no decision for its current signing key. One prompt at a

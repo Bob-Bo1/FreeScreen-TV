@@ -32,8 +32,11 @@
         </intent>
         <!-- China-market MIUI TV firmware: the Settings and Wi-Fi pills fall back to Xiaomi's settings app. -->
         <package android:name="com.xiaomi.mitv.settings" />
+        <package android:name="ar.tvplayer.tv" />
     </queries>
 
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
         android:label="CleanYourTV 新主页"
         android:icon="@mipmap/ic_launcher"
@@ -42,6 +45,16 @@
         android:allowBackup="false"
         android:localeConfig="@xml/locales_config">
 
+        <activity android:name=".PhoneTransferActivity" android:exported="false" android:screenOrientation="landscape" />
+        <activity
+            android:name=".PassthroughActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|uiMode"
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.phone-files" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/phone_file_paths" /></provider>
         <activity
             android:name=".MainActivity"
             android:exported="true"

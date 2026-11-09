@@ -1,0 +1,550 @@
+{
+ "version": 1,
+ "generated": "2026-11-03 11:26",
+ "min_epg_programmes": 30,
+ "channels": [
+  {
+   "std": "CCTV-1 综合",
+   "epg": "CCTV-1 综合",
+   "group": "央视",
+   "short": "CCTV-1",
+   "aliases": [
+    "CCTV-1 综合",
+    "CCTV-1",
+    "CCTV1"
+   ]
+  },
+  {
+   "std": "CCTV-2 财经",
+   "epg": "CCTV-2 财经",
+   "group": "央视",
+   "short": "CCTV-2",
+   "aliases": [
+    "CCTV-2 财经",
+    "CCTV-2",
+    "CCTV2"
+   ]
+  },
+  {
+   "std": "CCTV-3 综艺",
+   "epg": "CCTV-3 综艺",
+   "group": "央视",
+   "short": "CCTV-3",
+   "aliases": [
+    "CCTV-3 综艺",
+    "CCTV-3",
+    "CCTV3"
+   ]
+  },
+  {
+   "std": "CCTV-4 中文国际",
+   "epg": "CCTV-4 中文国际",
+   "group": "央视",
+   "short": "CCTV-4",
+   "aliases": [
+    "CCTV-4 中文国际",
+    "CCTV-4",
+    "CCTV4",
+    "CCTV-4 (亚洲)",
+    "CCTV-4（亚洲）"
+   ]
+  },
+  {
+   "std": "CCTV-5 体育",
+   "epg": "CCTV-5 体育",
+   "group": "央视",
+   "short": "CCTV-5",
+   "aliases": [
+    "CCTV-5 体育",
+    "CCTV-5",
+    "CCTV5"
+   ]
+  },
+  {
+   "std": "CCTV-5+ 体育赛事",
+   "epg": "CCTV-5+ 体育赛事",
+   "group": "央视",
+   "short": "CCTV-5+",
+   "aliases": [
+    "CCTV-5+ 体育赛事",
+    "CCTV-5+",
+    "CCTV5+"
+   ]
+  },
+  {
+   "std": "CCTV-6 电影",
+   "epg": "CCTV-6 电影",
+   "group": "央视",
+   "short": "CCTV-6",
+   "aliases": [
+    "CCTV-6 电影",
+    "CCTV-6",
+    "CCTV6"
+   ]
+  },
+  {
+   "std": "CCTV-7 国防军事",
+   "epg": "CCTV-7 国防军事",
+   "group": "央视",
+   "short": "CCTV-7",
+   "aliases": [
+    "CCTV-7 国防军事",
+    "CCTV-7",
+    "CCTV7"
+   ]
+  },
+  {
+   "std": "CCTV-8 电视剧",
+   "epg": "CCTV-8 电视剧",
+   "group": "央视",
+   "short": "CCTV-8",
+   "aliases": [
+    "CCTV-8 电视剧",
+    "CCTV-8",
+    "CCTV8"
+   ]
+  },
+  {
+   "std": "CCTV-9 纪录",
+   "epg": "CCTV-9 纪录",
+   "group": "央视",
+   "short": "CCTV-9",
+   "aliases": [
+    "CCTV-9 纪录",
+    "CCTV-9",
+    "CCTV9"
+   ]
+  },
+  {
+   "std": "CCTV-10 科教",
+   "epg": "CCTV-10 科教",
+   "group": "央视",
+   "short": "CCTV-10",
+   "aliases": [
+    "CCTV-10 科教",
+    "CCTV-10",
+    "CCTV10"
+   ]
+  },
+  {
+   "std": "CCTV-11 戏曲",
+   "epg": "CCTV-11 戏曲",
+   "group": "央视",
+   "short": "CCTV-11",
+   "aliases": [
+    "CCTV-11 戏曲",
+    "CCTV-11",
+    "CCTV11"
+   ]
+  },
+  {
+   "std": "CCTV-12 社会与法",
+   "epg": "CCTV-12 社会与法",
+   "group": "央视",
+   "short": "CCTV-12",
+   "aliases": [
+    "CCTV-12 社会与法",
+    "CCTV-12",
+    "CCTV12"
+   ]
+  },
+  {
+   "std": "CCTV-13 新闻",
+   "epg": "CCTV-13 新闻",
+   "group": "央视",
+   "short": "CCTV-13",
+   "aliases": [
+    "CCTV-13 新闻",
+    "CCTV-13",
+    "CCTV13"
+   ]
+  },
+  {
+   "std": "CCTV-14 少儿",
+   "epg": "CCTV-14 少儿",
+   "group": "央视",
+   "short": "CCTV-14",
+   "aliases": [
+    "CCTV-14 少儿",
+    "CCTV-14",
+    "CCTV14"
+   ]
+  },
+  {
+   "std": "CCTV-15 音乐",
+   "epg": "CCTV-15 音乐",
+   "group": "央视",
+   "short": "CCTV-15",
+   "aliases": [
+    "CCTV-15 音乐",
+    "CCTV-15",
+    "CCTV15"
+   ]
+  },
+  {
+   "std": "CCTV-16 奥林匹克",
+   "epg": "CCTV-16 奥林匹克",
+   "group": "央视",
+   "short": "CCTV-16",
+   "aliases": [
+    "CCTV-16 奥林匹克",
+    "CCTV-16",
+    "CCTV16"
+   ]
+  },
+  {
+   "std": "CCTV-17 农业农村",
+   "epg": "CCTV-17 农业农村",
+   "group": "央视",
+   "short": "CCTV-17",
+   "aliases": [
+    "CCTV-17 农业农村",
+    "CCTV-17",
+    "CCTV17",
+    "CCTV-17（农业农村）"
+   ]
+  },
+  {
+   "std": "浙江卫视",
+   "epg": "浙江卫视",
+   "group": "卫视",
+   "short": "浙江卫视",
+   "aliases": [
+    "浙江卫视"
+   ]
+  },
+  {
+   "std": "湖南卫视",
+   "epg": "湖南卫视",
+   "group": "卫视",
+   "short": "湖南卫视",
+   "aliases": [
+    "湖南卫视"
+   ]
+  },
+  {
+   "std": "江苏卫视",
+   "epg": "江苏卫视",
+   "group": "卫视",
+   "short": "江苏卫视",
+   "aliases": [
+    "江苏卫视"
+   ]
+  },
+  {
+   "std": "东方卫视",
+   "epg": "东方卫视",
+   "group": "卫视",
+   "short": "东方卫视",
+   "aliases": [
+    "东方卫视"
+   ]
+  },
+  {
+   "std": "北京卫视",
+   "epg": "北京卫视",
+   "group": "卫视",
+   "short": "北京卫视",
+   "aliases": [
+    "北京卫视"
+   ]
+  },
+  {
+   "std": "安徽卫视",
+   "epg": "安徽卫视",
+   "group": "卫视",
+   "short": "安徽卫视",
+   "aliases": [
+    "安徽卫视"
+   ]
+  },
+  {
+   "std": "山东卫视",
+   "epg": "山东卫视",
+   "group": "卫视",
+   "short": "山东卫视",
+   "aliases": [
+    "山东卫视"
+   ]
+  },
+  {
+   "std": "广东卫视",
+   "epg": "广东卫视",
+   "group": "卫视",
+   "short": "广东卫视",
+   "aliases": [
+    "广东卫视"
+   ]
+  },
+  {
+   "std": "深圳卫视",
+   "epg": "深圳卫视",
+   "group": "卫视",
+   "short": "深圳卫视",
+   "aliases": [
+    "深圳卫视"
+   ]
+  },
+  {
+   "std": "天津卫视",
+   "epg": "天津卫视",
+   "group": "卫视",
+   "short": "天津卫视",
+   "aliases": [
+    "天津卫视"
+   ]
+  },
+  {
+   "std": "四川卫视",
+   "epg": "四川卫视",
+   "group": "卫视",
+   "short": "四川卫视",
+   "aliases": [
+    "四川卫视"
+   ]
+  },
+  {
+   "std": "湖北卫视",
+   "epg": "湖北卫视",
+   "group": "卫视",
+   "short": "湖北卫视",
+   "aliases": [
+    "湖北卫视"
+   ]
+  },
+  {
+   "std": "河南卫视",
+   "epg": "河南卫视",
+   "group": "卫视",
+   "short": "河南卫视",
+   "aliases": [
+    "河南卫视"
+   ]
+  },
+  {
+   "std": "辽宁卫视",
+   "epg": "辽宁卫视",
+   "group": "卫视",
+   "short": "辽宁卫视",
+   "aliases": [
+    "辽宁卫视"
+   ]
+  },
+  {
+   "std": "重庆卫视",
+   "epg": "重庆卫视",
+   "group": "卫视",
+   "short": "重庆卫视",
+   "aliases": [
+    "重庆卫视"
+   ]
+  },
+  {
+   "std": "贵州卫视",
+   "epg": "贵州卫视",
+   "group": "卫视",
+   "short": "贵州卫视",
+   "aliases": [
+    "贵州卫视"
+   ]
+  },
+  {
+   "std": "云南卫视",
+   "epg": "云南卫视",
+   "group": "卫视",
+   "short": "云南卫视",
+   "aliases": [
+    "云南卫视"
+   ]
+  },
+  {
+   "std": "河北卫视",
+   "epg": "河北卫视",
+   "group": "卫视",
+   "short": "河北卫视",
+   "aliases": [
+    "河北卫视"
+   ]
+  },
+  {
+   "std": "吉林卫视",
+   "epg": "吉林卫视",
+   "group": "卫视",
+   "short": "吉林卫视",
+   "aliases": [
+    "吉林卫视"
+   ]
+  },
+  {
+   "std": "陕西卫视",
+   "epg": "陕西卫视",
+   "group": "卫视",
+   "short": "陕西卫视",
+   "aliases": [
+    "陕西卫视"
+   ]
+  },
+  {
+   "std": "甘肃卫视",
+   "epg": "甘肃卫视",
+   "group": "卫视",
+   "short": "甘肃卫视",
+   "aliases": [
+    "甘肃卫视"
+   ]
+  },
+  {
+   "std": "广西卫视",
+   "epg": "广西卫视",
+   "group": "卫视",
+   "short": "广西卫视",
+   "aliases": [
+    "广西卫视"
+   ]
+  },
+  {
+   "std": "江西卫视",
+   "epg": "江西卫视",
+   "group": "卫视",
+   "short": "江西卫视",
+   "aliases": [
+    "江西卫视"
+   ]
+  },
+  {
+   "std": "山西卫视",
+   "epg": "山西卫视",
+   "group": "卫视",
+   "short": "山西卫视",
+   "aliases": [
+    "山西卫视"
+   ]
+  },
+  {
+   "std": "黑龙江卫视",
+   "epg": "黑龙江卫视",
+   "group": "卫视",
+   "short": "黑龙江卫视",
+   "aliases": [
+    "黑龙江卫视"
+   ]
+  },
+  {
+   "std": "内蒙古卫视",
+   "epg": "内蒙古卫视",
+   "group": "卫视",
+   "short": "内蒙古卫视",
+   "aliases": [
+    "内蒙古卫视"
+   ]
+  },
+  {
+   "std": "新疆卫视",
+   "epg": "新疆卫视",
+   "group": "卫视",
+   "short": "新疆卫视",
+   "aliases": [
+    "新疆卫视"
+   ]
+  },
+  {
+   "std": "西藏卫视",
+   "epg": "西藏卫视",
+   "group": "卫视",
+   "short": "西藏卫视",
+   "aliases": [
+    "西藏卫视"
+   ]
+  },
+  {
+   "std": "宁夏卫视",
+   "epg": "宁夏卫视",
+   "group": "卫视",
+   "short": "宁夏卫视",
+   "aliases": [
+    "宁夏卫视"
+   ]
+  },
+  {
+   "std": "青海卫视",
+   "epg": "青海卫视",
+   "group": "卫视",
+   "short": "青海卫视",
+   "aliases": [
+    "青海卫视"
+   ]
+  },
+  {
+   "std": "东南卫视",
+   "epg": "东南卫视",
+   "group": "卫视",
+   "short": "东南卫视",
+   "aliases": [
+    "东南卫视"
+   ]
+  },
+  {
+   "std": "厦门卫视",
+   "epg": "厦门卫视",
+   "group": "卫视",
+   "short": "厦门卫视",
+   "aliases": [
+    "厦门卫视"
+   ]
+  },
+  {
+   "std": "三沙卫视",
+   "epg": "三沙卫视",
+   "group": "卫视",
+   "short": "三沙卫视",
+   "aliases": [
+    "三沙卫视"
+   ]
+  },
+  {
+   "std": "延边卫视",
+   "epg": "延边卫视",
+   "group": "卫视",
+   "short": "延边卫视",
+   "aliases": [
+    "延边卫视"
+   ]
+  },
+  {
+   "std": "大湾区卫视",
+   "epg": "大湾区卫视",
+   "group": "卫视",
+   "short": "大湾区卫视",
+   "aliases": [
+    "大湾区卫视"
+   ]
+  },
+  {
+   "std": "海峡卫视",
+   "epg": "海峡卫视",
+   "group": "卫视",
+   "short": "海峡卫视",
+   "aliases": [
+    "海峡卫视"
+   ]
+  },
+  {
+   "std": "安多卫视",
+   "epg": "安多卫视",
+   "group": "卫视",
+   "short": "安多卫视",
+   "aliases": [
+    "安多卫视"
+   ]
+  },
+  {
+   "std": "农林卫视",
+   "epg": "农林卫视",
+   "group": "卫视",
+   "short": "农林卫视",
+   "aliases": [
+    "农林卫视"
+   ]
+  }
+ ]
+}
