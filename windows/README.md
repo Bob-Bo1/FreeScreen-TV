@@ -10,6 +10,9 @@
 
 公开版随包提供主页和 Home 替身，直播源和节目表可自行导入。使用「查看更多候选源」前，可在 `files/sources.json` 中配置有权使用的候选清单，每项包含 `name`、`url` 和 `enabled`。
 
+v1.3 会显示电视的 Android 版本。更换主页要求 Android 8.0 或更新版本。无法确认原主页时会安装试用主页，保留现有 Home 键行为。恢复原主页时按安装记录清理本次安装的主页组件。
+
 ## 编译 Windows 客户端
 
-在 Windows 上用 .NET Framework 4.8 运行 `windows/build.ps1 -OutputDirectory <输出目录>`。脚本生成 EXE、配置和运行脚本。电视端主页源码在 `launcher/`，Home 替身源码在 `home-bridge/`。便携 ZIP 已提供该版本的两个 APK。
+在 Windows 上用 .NET Framework 4.8 运行 `windows/build.ps1 -OutputDirectory <输出目录>`。脚本生成 EXE、配置和运行脚本。电视端主页源码在 `launcher/`，Home 替身源码在 `home-bridge/`。便携 ZIP 已提供该版本的两个 APK 和试用主页补丁。
+

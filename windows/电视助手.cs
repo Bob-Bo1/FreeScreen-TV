@@ -332,10 +332,7 @@ namespace TvAssistant {
                 string folder=Path.Combine(root,"files","default-iptv");
                 string source=Path.Combine(folder,"home_ready.m3u");
                 string guide=Path.Combine(folder,"epg.xml.gz");
-                if(!File.Exists(source) || !File.Exists(guide)) {
-                    ImportFile(true);
-                    return;
-                }
+                if(!File.Exists(source) || !File.Exists(guide))throw new FileNotFoundException("内置播放源不完整，请重新解压电视助手。");
                 ReadChannels(source);
                 store.Apply(File.ReadAllText(source,Encoding.UTF8),before.EpgBytes ?? File.ReadAllBytes(guide),
                     before.Version,"导入内置播放列表",CancellationToken.None);
@@ -386,7 +383,7 @@ namespace TvAssistant {
             }
             catch(Exception ex) { MessageBox.Show("无法打开播放器："+ex.Message,"电视助手"); }
         }
-        bool ValidIp() { IPAddress parsed; if (!IPAddress.TryParse(ip.Text.Trim(),out parsed) || parsed.AddressFamily!=AddressFamily.InterNetwork) { MessageBox.Show("请先输入电视的 IPv4 地址。","电视助手"); ip.Focus(); return false; } return true; }
+        bool ValidIp() { IPAddress parsed; if (!IPAddress.TryParse(ip.Text.Trim().Normalize(NormalizationForm.FormKC).Replace('。','.'),out parsed) || parsed.AddressFamily!=AddressFamily.InterNetwork) { MessageBox.Show("请先输入电视的 IPv4 地址。","电视助手"); ip.Focus(); return false; } ip.Text=parsed.ToString(); return true; }
         void Append(string line) { if (IsDisposed) return; if (InvokeRequired) { BeginInvoke(new Action<string>(Append),line); return; } if (!String.IsNullOrWhiteSpace(line)) log.AppendText(line+Environment.NewLine); }
         void Ui(Action a) { if (!IsDisposed && IsHandleCreated) BeginInvoke(a); }
         Process StartScript(string file, string arguments, string input, Action<string> line, Action<int> finished) {
@@ -431,7 +428,7 @@ namespace TvAssistant {
             log.Clear(); Busy(true); status.Text=includePlayer?"正在安装…":"正在更换主页…";
             try { operation=StartScript("setup.ps1",arguments,ip.Text.Trim()+"\r\nY\r\n",Append,(code)=>{
                 Busy(false);
-                status.Text=code==0?(includePlayer?"安装完成":"主页已更换"):"操作失败 · 查看记录";
+                status.Text=code==12?"电视系统版本过低":code==10?(includePlayer?"播放器和试用主页已安装":"试用主页已安装"):code==0?(includePlayer?"安装完成":"主页已更换"):"操作失败 · 查看记录";
             }); }
             catch(Exception ex) { Busy(false); status.Text="无法启动"; Append(ex.Message); }
         }
@@ -503,3 +500,4 @@ namespace TvAssistant {
         }
     }
 }
+

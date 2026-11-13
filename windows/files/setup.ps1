@@ -31,20 +31,163 @@ function Expand-HomeComponent([string]$component) {
     if ($activity -and $activity.StartsWith('.')) { return "$package/$package$activity" }
     return $component
 }
-function Current-Home {
-    $out = Shell @('cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN','-c','android.intent.category.HOME')
-    $lines = @($out -split "`r?`n" | Where-Object { $_ -match '^[A-Za-z0-9_\.]+/[A-Za-z0-9_\.$]+$' })
-    if ($lines.Count -ne 1 -or $lines[0] -match '^(android|com\.android\.internal\.app)/') { return '' }
-    return (Expand-HomeComponent $lines[0].Trim())
+function Current-Home([switch]$Diagnostics) {
+    $query = @('package','resolve-activity','--brief','-a','android.intent.action.MAIN','-c','android.intent.category.HOME')
+    $result = Invoke-Adb (@('-s',$script:address,'shell','cmd') + $query)
+    $attempts = @($result)
+    if ($result.Code -ne 0 -or $result.Text -notmatch '(?m)^\s*[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+\s*$') {
+        $attempts += Invoke-Adb (@('-s',$script:address,'shell','pm') + $query[1..($query.Length-1)])
+    }
+    foreach ($attempt in $attempts) {
+        if ($attempt.Code -ne 0) { continue }
+        $lines = @($attempt.Text -split "`r?`n" | ForEach-Object {$_.Trim()} | Where-Object { $_ -match '^[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+$' } | Select-Object -Unique)
+        if ($lines.Count -eq 1 -and $lines[0] -notmatch '^(android|com\.android\.internal\.app)/|/(?:[^/]*\.)?(ResolverActivity|ChooserActivity)$') {
+            return (Expand-HomeComponent $lines[0])
+        }
+    }
+    if ($Diagnostics) {
+        Write-Host '默认主页查询结果：'
+        foreach ($attempt in $attempts) {
+            if ($attempt.Text) { Write-Host $attempt.Text } else { Write-Host '（电视没有返回内容）' }
+        }
+        $candidates = Invoke-Adb @('-s',$script:address,'shell','cmd','package','query-activities','--brief','-a','android.intent.action.MAIN','-c','android.intent.category.HOME')
+        Write-Host '候选主页查询结果：'
+        if ($candidates.Text) { Write-Host $candidates.Text } else { Write-Host '（电视没有返回内容）' }
+    }
+    return ''
+}
+function Test-Installed([string]$package) {
+    $installed = Shell @('pm','list','packages','--user','0',$package)
+    return @($installed -split "`r?`n") -contains "package:$package"
+}
+function Remove-OwnedPackage([string]$package, [string]$expectedHash) {
+    if (!$expectedHash -or !(Test-Installed $package)) { return }
+    $path = Shell @('pm','path',$package)
+    if ($path -notmatch '^package:([A-Za-z0-9/_~.=+-]+)$') {
+        throw "无法核对 $package 的安装路径，已保留恢复记录。"
+    }
+    $digest = Shell @('sha256sum',$Matches[1])
+    if (($digest -split '\s+')[0] -ne $expectedHash) {
+        throw "$package 已变更，无法确认是本次安装的版本，已保留恢复记录。"
+    }
+    $r = Shell @('pm','uninstall','--user','0',$package)
+    Write-Host $r
+    if ($r -notmatch '(?m)^\s*Success\s*$' -or (Test-Installed $package)) {
+        throw "$package 清理失败，已保留恢复记录。"
+    }
+    Write-Host "已清理 $package"
+}
+function Save-Recovery($saved) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $record -Parent) | Out-Null
+    $pending = $record + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    try {
+        $saved | ConvertTo-Json | Set-Content -LiteralPath $pending -Encoding UTF8
+        Move-Item -LiteralPath $pending -Destination $record
+    } finally {
+        if (Test-Path -LiteralPath $pending) { Remove-Item -LiteralPath $pending }
+    }
+}
+function Archive-Recovery {
+    $name = $key + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '.json'
+    Move-Item -LiteralPath $record -Destination (Join-Path (Split-Path $record -Parent) $name)
+}
+function Complete-Recovery($saved) {
+    if ($saved.previewOnly) {
+        Remove-OwnedPackage 'app.freescreen.tvpreview' $saved.previewSha256
+        Write-Host '已移除试用主页，电视继续使用原来的主页设置。'
+    } else {
+        Restore-Original $saved
+        Shell @('input','keyevent','HOME') | Out-Null
+        Remove-OwnedPackage 'com.ts.launcher' $saved.bridgeSha256
+        Remove-OwnedPackage 'com.gathin.tvhome' $saved.homeSha256
+        if (!$saved.homeSha256) {
+            Write-Host '未记录新主页的安装来源，已保留该应用。'
+        }
+        Write-Host '原主页已恢复。'
+    }
+    Archive-Recovery
+}
+function Expand-PreviewApk([string]$destination) {
+    $patch = Join-Path $PSScriptRoot 'home-preview.patch'
+    $base = Join-Path $PSScriptRoot 'home.apk'
+    $reader = [IO.BinaryReader]::new([IO.File]::OpenRead($patch))
+    try {
+        if ([Text.Encoding]::ASCII.GetString($reader.ReadBytes(4)) -ne 'FST1') {
+            throw '试用安装包数据无效，请重新解压。'
+        }
+        $baseHash = [BitConverter]::ToString($reader.ReadBytes(32)).Replace('-','')
+        $previewHash = [BitConverter]::ToString($reader.ReadBytes(32)).Replace('-','')
+        $length = $reader.ReadInt32()
+        if ($length -le 0 -or $length -gt 20MB -or (Get-FileHash -LiteralPath $base).Hash -ne $baseHash) {
+            throw '主页安装包校验失败，请重新解压。'
+        }
+        $source = [IO.BinaryReader]::new([IO.File]::OpenRead($base))
+        try {
+            $output = [IO.File]::Open($destination, [IO.FileMode]::CreateNew)
+            try {
+                while ($output.Length -lt $length) {
+                    $offset = $reader.ReadInt32()
+                    $count = $reader.ReadInt32()
+                    if ($count -le 0 -or $count -gt ($length - $output.Length) -or $offset -lt -1) {
+                        throw '试用安装包数据不完整，请重新解压。'
+                    }
+                    if ($offset -eq -1) {
+                        $chunk = $reader.ReadBytes($count)
+                    } else {
+                        if ([long]$offset + $count -gt $source.BaseStream.Length) {
+                            throw '试用安装包数据超出范围，请重新解压。'
+                        }
+                        $source.BaseStream.Position = $offset
+                        $chunk = $source.ReadBytes($count)
+                    }
+                    if ($chunk.Length -ne $count) { throw '试用安装包数据不完整，请重新解压。' }
+                    $output.Write($chunk,0,$count)
+                }
+            } finally { $output.Dispose() }
+        } finally { $source.Dispose() }
+        if ((Get-FileHash -LiteralPath $destination).Hash -ne $previewHash) {
+            throw '试用安装包校验失败，请重新解压。'
+        }
+    } finally { $reader.Dispose() }
+}
+function Install-Preview {
+    $file = Join-Path $PSScriptRoot ('home-preview-' + [Guid]::NewGuid().ToString('N') + '.apk')
+    try {
+        Expand-PreviewApk $file
+        if ($record -and !(Test-Installed 'app.freescreen.tvpreview')) {
+            Save-Recovery ([ordered]@{
+                serial=$serial; model=$model; fingerprint=$fingerprint; previewOnly=$true
+                previewSha256=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+            })
+        } else {
+            Write-Host '没有可用的试用安装记录时，可以在电视的应用管理中卸载「电视主页试用」。'
+        }
+        Write-Host '无法确认原主页，正在安装试用版。按遥控器 Home 键仍可使用原来的主页设置。'
+        $r = Adb @('install','-r',$file)
+        Write-Host $r
+        if ($r -notmatch '(?m)^\s*Success\s*$') { throw "试用版安装失败：$r" }
+        $r = Shell @('am','start','-W','-n','app.freescreen.tvpreview/com.gathin.tvhome.MainActivity')
+        Write-Host $r
+        if ($r -match '(?i)error|exception|unable to resolve' -or $r -notmatch '(?m)^Status:\s+ok\s*$') {
+            throw '试用版已安装，请在电视应用列表打开「电视主页试用」。'
+        }
+        Write-Host '已安装并打开试用版。以后可以从电视应用列表打开「电视主页试用」。'
+        Write-Host 'TVASSISTANT_SETUP_PREVIEW'
+    } finally {
+        if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file }
+    }
 }
 function Restore-Original($saved) {
     if ($saved.originalStockEnabled -and $saved.originalHome -eq $stock) {
         $r = Shell @('pm','enable','--user','0','com.mitv.tvhome'); Write-Host $r
         if ($r -notmatch 'new state: enabled') { throw '启用小米原主页失败。' }
     }
-    $r = Shell @('cmd','package','set-home-activity','--user','0',[string]$saved.originalHome); Write-Host $r
-    if ($r -notmatch 'Success') { throw '恢复原主页设置失败。' }
-    if ((Current-Home) -ne (Expand-HomeComponent $saved.originalHome)) { throw '系统没有确认原主页已恢复。' }
+    $original = Expand-HomeComponent $saved.originalHome
+    if ((Current-Home) -ne $original) {
+        $r = Shell @('cmd','package','set-home-activity','--user','0',[string]$saved.originalHome); Write-Host $r
+        if ($r -notmatch 'Success') { throw '恢复原主页设置失败。' }
+    }
+    if ((Current-Home) -ne $original) { throw '系统没有确认原主页已恢复。' }
 }
 function Read-TiviMateField {
     $activity = Shell @('dumpsys','activity','activities')
@@ -61,6 +204,14 @@ function Read-TiviMateField {
     $field = $screen.SelectSingleNode('//node[@package="ar.tvplayer.tv" and @focused="true" and (@class="android.widget.EditText" or @resource-id="ar.tvplayer.tv:id/h")]')
     if ($null -eq $field) { throw '请先选中 TiviMate 的网址输入框。也可以复制地址后手动输入。' }
     return $field.GetAttribute('text')
+}
+function Install-SelectedPlayer {
+    if ($Mode -ne 'install') { return }
+    Install-TiviMateDownload $TiviMateApk
+    Write-Host '正在安装 TiviMate 播放器。'
+    $result = Adb @('install','-r',$TiviMateApk)
+    Write-Host $result
+    if ($result -notmatch '(?m)^\s*Success\s*$') { throw "TiviMate 安装失败：$result" }
 }
 function Get-OfficialDownload([uri]$uri, [string]$destination, [long]$maximumBytes) {
     Add-Type -AssemblyName System.Net.Http
@@ -182,12 +333,25 @@ if ($state -ne 'device') {
         Write-Host '订阅地址已填入，请在电视上点下一步。'
         exit 0
     }
+    $release = Invoke-Adb @('-s',$script:address,'shell','getprop','ro.build.version.release')
+    $sdkResult = Invoke-Adb @('-s',$script:address,'shell','getprop','ro.build.version.sdk')
+    $sdk = 0
+    if ($sdkResult.Code -eq 0 -and [int]::TryParse($sdkResult.Text, [ref]$sdk) -and $sdk -gt 0) {
+        $version = if ($release.Code -eq 0 -and $release.Text) { $release.Text } else { '未知' }
+        Write-Host "电视安卓版本：$version（API $sdk）"
+        if ($Mode -in @('home','install') -and $sdk -lt 26) {
+            Write-Host '当前电视系统版本过低。主页和试用版最低要求 Android 8.0（API 26）。'
+            exit 12
+        }
+    } else {
+        Write-Host '电视未返回可识别的安卓 API 版本，将继续检查。'
+    }
     $model = Shell @('getprop','ro.product.model')
     $fingerprint = Shell @('getprop','ro.build.fingerprint')
     Write-Host "已连接电视型号：$model"
     Write-Host '其他型号可以测试；Home 替身的效果取决于具体电视系统。'
-    if ($Mode -in @('install','tivimate')) { Install-TiviMateDownload $TiviMateApk }
     if ($Mode -eq 'tivimate') {
+        Install-TiviMateDownload $TiviMateApk
         Write-Host '只安装 TiviMate 播放器：不修改桌面、不变更 Home、不写恢复记录。'
         $r = Adb @('install','-r',$TiviMateApk); Write-Host $r
         if ($r -notmatch 'Success') { throw "TiviMate 安装失败：$r" }
@@ -213,57 +377,46 @@ if ($state -ne 'device') {
         if (-not (Test-Path -LiteralPath $record)) { throw '没有找到这台电视的恢复记录。请将新版放在旧版同一级目录，或从最初安装的版本恢复。' }
         $saved = Get-Content -LiteralPath $record -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($saved.serial -ne $serial -or $saved.model -ne $model -or $saved.fingerprint -ne $fingerprint) { throw '恢复记录与当前电视或固件不一致，请先人工检查。' }
-        Restore-Original $saved
-        Shell @('input','keyevent','HOME') | Out-Null
-        $bridgeInstalled = Shell @('pm','list','packages','--user','0','com.ts.launcher')
-        if ($bridgeInstalled -match '(?m)^package:com\.ts\.launcher\s*$' -and $saved.bridgeSha256) {
-            $path = Shell @('pm','path','com.ts.launcher')
-            if ($path -match '(?m)^package:([A-Za-z0-9/_~.=-]+)\s*$') {
-                $digest = Shell @('sha256sum',$Matches[1])
-                if (($digest -split '\s+')[0] -eq $saved.bridgeSha256) {
-                    $r = Shell @('pm','uninstall','--user','0','com.ts.launcher')
-                    if ($r -notmatch 'Success') { throw '原主页已恢复，主页替身清理失败。' }
-                }
-            }
-        }
-        Write-Host '原主页已恢复。'
-        $archived = Join-Path (Split-Path $record -Parent) ($key + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json')
-        Move-Item -LiteralPath $record -Destination $archived
+        Complete-Recovery $saved
     } else {
-        $homeBefore = Current-Home
-        if (-not $homeBefore) { throw '无法确定原主页，已停止安装。' }
+        if ($record -and (Test-Path -LiteralPath $record)) { throw '已有本机恢复记录，请先恢复原主页。' }
+        $homeBefore = Current-Home -Diagnostics
+        if (-not $homeBefore) {
+            Install-SelectedPlayer
+            Install-Preview
+            exit 10
+        }
         Write-Host "安装前主页：$homeBefore"
         if (-not $record) { throw '无法读取电视序列号，不能安全保存恢复记录。' }
-        if (Test-Path -LiteralPath $record) { throw '已有本机恢复记录，请先恢复原主页。' }
         $disabled = Shell @('pm','list','packages','-d','--user','0')
         if ($homeBefore -eq $stock -and $disabled -match '(?m)^package:com\.mitv\.tvhome\s*$') { throw '小米原主页已经停用，不能安全判断安装前状态。' }
         $bridgeBefore = Shell @('pm','list','packages','--user','0','com.ts.launcher')
         if ($bridgeBefore -match '(?m)^package:com\.ts\.launcher\s*$') { throw '电视已有同名替身应用，无法确认其来源，请先人工检查。' }
-        $files = @()
-        if ($Mode -eq 'install') { $files += $TiviMateApk }
-        $files += Join-Path $PSScriptRoot 'home.apk'
-        Write-Host '正在安装所选应用。'
-        foreach ($file in $files) {
-            $r = Adb @('install','-r',$file); Write-Host $r
-            if ($r -notmatch 'Success') { throw "$file 安装失败：$r" }
+        $homeApk = Join-Path $PSScriptRoot 'home.apk'
+        $bridgeApk = Join-Path $PSScriptRoot 'bridge.apk'
+        $homeHash = $null
+        if (!(Test-Installed 'com.gathin.tvhome')) {
+            $homeHash = (Get-FileHash -LiteralPath $homeApk -Algorithm SHA256).Hash
         }
-        $r = Shell @('am','start','-W','-n','com.gathin.tvhome/.MainActivity'); Write-Host $r
-        if ($r -match '(?i)error|exception|unable to resolve') { throw '新主页未能启动，未修改系统主页。' }
-        $standby = Shell @('settings','get','global','disable_back_home_whitelist')
-        $sha = [Security.Cryptography.SHA256]::Create()
-        try { $bridgeHash = [BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes((Join-Path $PSScriptRoot 'bridge.apk')))).Replace('-','') } finally { $sha.Dispose() }
-        $saved = [ordered]@{ serial=$serial; model=$model; fingerprint=$fingerprint; originalHome=$homeBefore; originalStockEnabled=($homeBefore -eq $stock); originalStandby=$standby; bridgeSha256=$bridgeHash; created=(Get-Date -Format o) }
-        New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-        $saved | ConvertTo-Json | Set-Content -LiteralPath $record -Encoding UTF8
-        Write-Host "已保存恢复记录：$record"
-        Write-Host '接下来会尝试设置 Home 替身；已验证的小米主页会先被停用。其他原主页不会停用。'
-        if ((Read-Host '输入 Y 继续，输入其他内容取消') -notmatch '^[Yy]$') { throw '已取消切换；原主页未被停用。' }
-        Write-Host '正在安装 Home 替身。'
-        foreach ($file in @('bridge.apk')) {
-            $r = Adb @('install','-r',(Join-Path $PSScriptRoot $file)); Write-Host $r
-            if ($r -notmatch 'Success') { throw "$file 安装失败：$r" }
+        $saved = [ordered]@{
+            serial=$serial; model=$model; fingerprint=$fingerprint; originalHome=$homeBefore
+            originalStockEnabled=($homeBefore -eq $stock)
+            bridgeSha256=(Get-FileHash -LiteralPath $bridgeApk -Algorithm SHA256).Hash
+            homeSha256=$homeHash; created=(Get-Date -Format o)
         }
+        if ((Read-Host '输入 Y 继续，输入其他内容取消') -notmatch '^[Yy]$') { throw '已取消安装。' }
+        Install-SelectedPlayer
+        Save-Recovery $saved
+        Write-Host '已保存原主页恢复记录。'
         try {
+            Write-Host '正在安装新主页。'
+            $r = Adb @('install','-r',$homeApk); Write-Host $r
+            if ($r -notmatch '(?m)^\s*Success\s*$') { throw "新主页安装失败：$r" }
+            $r = Shell @('am','start','-W','-n','com.gathin.tvhome/.MainActivity'); Write-Host $r
+            if ($r -notmatch '(?m)^Status:\s+ok\s*$') { throw '新主页未能启动。' }
+            Write-Host '正在安装 Home 替身。'
+            $r = Adb @('install','-r',$bridgeApk); Write-Host $r
+            if ($r -notmatch '(?m)^\s*Success\s*$') { throw "Home 替身安装失败：$r" }
             if ($homeBefore -eq $stock) {
                 $r = Shell @('pm','disable-user','--user','0','com.mitv.tvhome'); Write-Host $r
                 if ($r -notmatch 'new state: disabled-user') { throw '停用原主页失败。' }
@@ -280,11 +433,7 @@ if ($state -ne 'device') {
             $failure = $_.Exception.Message
             Write-Host '替身设置失败，正在尝试恢复原主页。'
             try {
-                Restore-Original $saved
-                $r = Shell @('pm','uninstall','--user','0','com.ts.launcher'); Write-Host $r
-                if ($r -notmatch 'Success') { throw '替身卸载失败，请手动检查。' }
-                Move-Item -LiteralPath $record -Destination (Join-Path (Split-Path $record -Parent) ($key + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json'))
-                Write-Host '已确认原主页恢复并移除本次替身。'
+                Complete-Recovery $saved
             } catch { throw "替身设置失败：$failure；自动恢复未确认：$($_.Exception.Message)。请保留恢复记录并检查电视。" }
             throw "替身设置失败：$failure；已恢复原主页。"
         }
@@ -299,3 +448,12 @@ if ($state -ne 'device') {
     if ($Mode -in @('home','install')) { Write-Host '如果切换后画面异常，请保持电视连接，在电视助手中使用“恢复原主页”。' }
 } finally { Pause-And-Exit }
 exit $exitCode
+
+
+
+
+
+
+
+
+
